@@ -1,5 +1,5 @@
 #define MyAppName "ClearEQ"
-#define MyAppVersion "0.1.1"
+#define MyAppVersion "0.1.2"
 #define MyAppPublisher "Collectors Cove"
 #ifndef SourceDir
 #define SourceDir "..\build\ClearEQ_artefacts\Release"

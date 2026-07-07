@@ -1,9 +1,10 @@
 cmake_minimum_required(VERSION 3.22)
-project(ClearEQ VERSION 0.1.0 LANGUAGES C CXX)
+project(ClearEQ VERSION 0.1.2 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15" CACHE STRING "Minimum macOS deployment target")
+set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "Build universal macOS binaries for Apple Silicon and Intel testers")
 
 include(FetchContent)
 FetchContent_Declare(

@@ -42,12 +42,18 @@ ClearEQAudioProcessorEditor::ClearEQAudioProcessorEditor (ClearEQAudioProcessor&
     bypassButton.setClickingTogglesState (true);
     addAndMakeVisible (bypassButton);
 
+    deltaButton.setClickingTogglesState (true);
+    deltaButton.setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xffffcf65).withAlpha (0.35f));
+    deltaButton.setTooltip ("Delta mode: solo the selected EQ band so you only hear the area being adjusted.");
+    addAndMakeVisible (deltaButton);
+
     outputSlider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
     outputSlider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 72, 18);
     outputSlider.setColour (juce::Slider::rotarySliderFillColourId, juce::Colour (0xff5bbcff));
     addAndMakeVisible (outputSlider);
 
     bypassAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (audioProcessor.apvts, "bypass", bypassButton);
+    deltaAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (audioProcessor.apvts, "delta", deltaButton);
     outputAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (audioProcessor.apvts, "output", outputSlider);
 
     startTimerHz (30);
@@ -61,7 +67,8 @@ void ClearEQAudioProcessorEditor::resized()
     subLabel.setBounds (42, 52, 260, 20);
     outputSlider.setBounds (getWidth() - 112, 20, 78, 70);
     bypassButton.setBounds (getWidth() - 222, 30, 86, 36);
-    presetBox.setBounds (getWidth() - 560, 30, 300, 36);
+    deltaButton.setBounds (getWidth() - 322, 30, 86, 36);
+    presetBox.setBounds (getWidth() - 660, 30, 300, 36);
     graphBounds = getLocalBounds().reduced (36).withTrimmedTop (98).withTrimmedBottom (138).toFloat();
 }
 
@@ -102,6 +109,32 @@ void ClearEQAudioProcessorEditor::setParam (int band, const juce::String& suffix
         p->setValueNotifyingHost (norm);
         p->endChangeGesture();
     }
+}
+
+
+void ClearEQAudioProcessorEditor::setDeltaBand (int band)
+{
+    if (auto* p = audioProcessor.apvts.getParameter ("deltaBand"))
+    {
+        const auto clampedBand = juce::jlimit (0, bandCount - 1, band);
+        p->beginChangeGesture();
+        p->setValueNotifyingHost (p->convertTo0to1 ((float) clampedBand));
+        p->endChangeGesture();
+    }
+}
+
+bool ClearEQAudioProcessorEditor::isDeltaEnabled() const
+{
+    if (auto* p = audioProcessor.apvts.getRawParameterValue ("delta"))
+        return p->load() > 0.5f;
+    return false;
+}
+
+int ClearEQAudioProcessorEditor::getDeltaBand() const
+{
+    if (auto* p = audioProcessor.apvts.getRawParameterValue ("deltaBand"))
+        return juce::jlimit (0, bandCount - 1, static_cast<int> (std::round (p->load())));
+    return 1;
 }
 
 float ClearEQAudioProcessorEditor::frequencyToX (float freq) const { return mapLog (freq, 20.0f, 20000.0f, graphBounds.getX() + 26.0f, graphBounds.getRight() - 26.0f); }
@@ -156,7 +189,11 @@ void ClearEQAudioProcessorEditor::drawGraph (juce::Graphics& g)
 
     g.setColour (juce::Colour (0xffb7c3d8));
     g.setFont (14.0f);
-    g.drawText ("Drag a node to shape the sound — labels explain what each area does.", graphBounds.reduced (22).removeFromTop (24), juce::Justification::left);
+    const auto selectedDeltaBand = getDeltaBand();
+    const auto deltaOn = isDeltaEnabled();
+    g.drawText (deltaOn ? "DELTA MODE: hearing only " + bandNames[(size_t) selectedDeltaBand] + " — click another node to audition it."
+                        : "Drag a node to shape the sound — enable Delta to hear one band in isolation.",
+                graphBounds.reduced (22).removeFromTop (24), juce::Justification::left);
 
     auto response = buildResponsePath();
     g.setColour (juce::Colours::black.withAlpha (0.42f));
@@ -173,10 +210,18 @@ void ClearEQAudioProcessorEditor::drawGraph (juce::Graphics& g)
     {
         auto p = bandToPoint (b);
         auto colour = bandColours[(size_t) b];
+        const auto isSelected = deltaOn && b == selectedDeltaBand;
         g.setColour (juce::Colours::black.withAlpha (0.45f));
         g.fillEllipse (p.x - 23, p.y - 21, 46, 46);
+        if (isSelected)
+        {
+            g.setColour (colour.withAlpha (0.28f));
+            g.fillEllipse (p.x - 34, p.y - 34, 68, 68);
+            g.setColour (juce::Colours::white.withAlpha (0.72f));
+            g.drawEllipse (p.x - 30, p.y - 30, 60, 60, 2.0f);
+        }
         g.setColour (colour);
-        g.drawEllipse (p.x - 20, p.y - 20, 40, 40, 4.0f);
+        g.drawEllipse (p.x - 20, p.y - 20, 40, 40, isSelected ? 5.5f : 4.0f);
         g.fillEllipse (p.x - 10, p.y - 10, 20, 20);
         g.setColour (juce::Colours::white.withAlpha (0.85f));
         g.drawEllipse (p.x - 10, p.y - 10, 20, 20, 1.4f);
@@ -197,8 +242,8 @@ void ClearEQAudioProcessorEditor::drawBandCards (juce::Graphics& g)
         auto card = juce::Rectangle<float> (area.getX() + b * (cardW + gap), area.getY(), cardW, area.getHeight());
         g.setColour (juce::Colour (0x12ffffff));
         g.fillRoundedRectangle (card, 16.0f);
-        g.setColour (juce::Colour (0x22ffffff));
-        g.drawRoundedRectangle (card, 16.0f, 1.0f);
+        g.setColour (isDeltaEnabled() && b == getDeltaBand() ? bandColours[(size_t) b].withAlpha (0.85f) : juce::Colour (0x22ffffff));
+        g.drawRoundedRectangle (card, 16.0f, isDeltaEnabled() && b == getDeltaBand() ? 2.2f : 1.0f);
         g.setColour (juce::Colours::white);
         g.setFont (juce::FontOptions (13.0f, juce::Font::bold));
         g.drawText (bandNames[(size_t) b] == "Mud" ? "Low-Mid Mud" : bandNames[(size_t) b], card.reduced (12).removeFromTop (22), juce::Justification::left);
@@ -223,7 +268,10 @@ void ClearEQAudioProcessorEditor::drawBandCards (juce::Graphics& g)
     g.drawRoundedRectangle (mix, 16.0f, 1.0f);
     g.setColour (juce::Colour (0xff8793a6));
     g.setFont (12.0f);
-    g.drawText ("OUTPUT", mix.removeFromTop (34).toNearestInt(), juce::Justification::centred);
+    g.drawText (isDeltaEnabled() ? "DELTA ON" : "OUTPUT", mix.removeFromTop (34).toNearestInt(), juce::Justification::centred);
+    g.setColour (juce::Colours::white);
+    g.setFont (juce::FontOptions (13.0f, juce::Font::bold));
+    g.drawText (isDeltaEnabled() ? ("Solo: " + bandNames[(size_t) getDeltaBand()]) : "Normal EQ", mix.toNearestInt(), juce::Justification::centred);
 }
 
 int ClearEQAudioProcessorEditor::hitTestBand (juce::Point<float> p) const
@@ -237,6 +285,8 @@ int ClearEQAudioProcessorEditor::hitTestBand (juce::Point<float> p) const
 void ClearEQAudioProcessorEditor::mouseDown (const juce::MouseEvent& e)
 {
     draggedBand = hitTestBand (e.position);
+    if (draggedBand >= 0)
+        setDeltaBand (draggedBand);
 }
 
 void ClearEQAudioProcessorEditor::mouseDrag (const juce::MouseEvent& e)

@@ -17,6 +17,8 @@ ClearEQAudioProcessor::ClearEQAudioProcessor()
 {
     bypassParam = apvts.getRawParameterValue ("bypass");
     outputParam = apvts.getRawParameterValue ("output");
+    deltaParam = apvts.getRawParameterValue ("delta");
+    deltaBandParam = apvts.getRawParameterValue ("deltaBand");
     for (int i = 0; i < 5; ++i)
     {
         bandParams[(size_t) i * 3 + 0] = apvts.getRawParameterValue (juce::String (bandIds[i]) + "Freq");
@@ -29,6 +31,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout ClearEQAudioProcessor::creat
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
     params.push_back (std::make_unique<juce::AudioParameterBool> ("bypass", "Bypass", false));
+    params.push_back (std::make_unique<juce::AudioParameterBool> ("delta", "Delta Band Solo", false));
+    params.push_back (std::make_unique<juce::AudioParameterInt> ("deltaBand", "Delta Band", 0, 4, 1));
     params.push_back (std::make_unique<juce::AudioParameterFloat> ("output", "Output", juce::NormalisableRange<float> (-24.0f, 24.0f, 0.1f), 0.0f));
 
     const char* names[5] = { "Low", "Low-Mid Mud", "Mid", "Presence", "High" };
@@ -54,7 +58,10 @@ void ClearEQAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBloc
     juce::dsp::ProcessSpec spec { sampleRate, static_cast<juce::uint32> (samplesPerBlock), static_cast<juce::uint32> (getTotalNumOutputChannels()) };
     leftChain.prepare (spec);
     rightChain.prepare (spec);
+    deltaLeft.prepare (spec);
+    deltaRight.prepare (spec);
     updateFilters();
+    updateDeltaFilter();
 }
 
 juce::dsp::IIR::Coefficients<float>::Ptr ClearEQAudioProcessor::makeCoefficients (int bandIndex, float freq, float gainDb, float q) const
@@ -68,6 +75,23 @@ juce::dsp::IIR::Coefficients<float>::Ptr ClearEQAudioProcessor::makeCoefficients
     if (bandIndex == 4)
         return juce::dsp::IIR::Coefficients<float>::makeHighShelf (currentSampleRate, freq, q, gain);
     return juce::dsp::IIR::Coefficients<float>::makePeakFilter (currentSampleRate, freq, q, gain);
+}
+
+
+juce::dsp::IIR::Coefficients<float>::Ptr ClearEQAudioProcessor::makeDeltaCoefficients (int bandIndex) const
+{
+    bandIndex = juce::jlimit (0, 4, bandIndex);
+    const auto freq = juce::jlimit (20.0f, static_cast<float> (currentSampleRate * 0.45), bandParams[(size_t) bandIndex * 3]->load());
+    const auto q = juce::jlimit (0.35f, 8.0f, bandParams[(size_t) bandIndex * 3 + 2]->load());
+    return juce::dsp::IIR::Coefficients<float>::makeBandPass (currentSampleRate, freq, q);
+}
+
+void ClearEQAudioProcessor::updateDeltaFilter()
+{
+    const auto selected = deltaBandParam != nullptr ? static_cast<int> (std::round (deltaBandParam->load())) : 1;
+    auto coeffs = makeDeltaCoefficients (selected);
+    *deltaLeft.coefficients = *coeffs;
+    *deltaRight.coefficients = *coeffs;
 }
 
 void ClearEQAudioProcessor::updateBand (int bandIndex, float freq, float gainDb, float q)
@@ -100,16 +124,34 @@ void ClearEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
         return;
 
     updateFilters();
+    updateDeltaFilter();
     juce::dsp::AudioBlock<float> block (buffer);
     auto leftBlock = block.getSingleChannelBlock (0);
     juce::dsp::ProcessContextReplacing<float> leftContext (leftBlock);
-    leftChain.process (leftContext);
 
-    if (buffer.getNumChannels() > 1)
+    if (deltaParam != nullptr && deltaParam->load() > 0.5f)
     {
-        auto rightBlock = block.getSingleChannelBlock (1);
-        juce::dsp::ProcessContextReplacing<float> rightContext (rightBlock);
-        rightChain.process (rightContext);
+        deltaLeft.process (leftContext);
+        if (buffer.getNumChannels() > 1)
+        {
+            auto rightBlock = block.getSingleChannelBlock (1);
+            juce::dsp::ProcessContextReplacing<float> rightContext (rightBlock);
+            deltaRight.process (rightContext);
+        }
+
+        // Delta mode intentionally lifts the isolated band slightly so testers can hear
+        // the selected frequency area clearly while sweeping nodes.
+        buffer.applyGain (juce::Decibels::decibelsToGain (3.0f));
+    }
+    else
+    {
+        leftChain.process (leftContext);
+        if (buffer.getNumChannels() > 1)
+        {
+            auto rightBlock = block.getSingleChannelBlock (1);
+            juce::dsp::ProcessContextReplacing<float> rightContext (rightBlock);
+            rightChain.process (rightContext);
+        }
     }
 
     buffer.applyGain (juce::Decibels::decibelsToGain (outputParam != nullptr ? outputParam->load() : 0.0f));

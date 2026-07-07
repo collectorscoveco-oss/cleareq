@@ -19,11 +19,13 @@ public:
 private:
     ClearEQAudioProcessor& audioProcessor;
     juce::TextButton bypassButton { "Bypass" };
+    juce::TextButton deltaButton { "Delta" };
     juce::ComboBox presetBox;
     juce::Slider outputSlider;
     juce::Label titleLabel, subLabel;
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> bypassAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> deltaAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> outputAttachment;
 
     int draggedBand = -1;
@@ -39,6 +41,9 @@ private:
     void timerCallback() override { repaint(); }
     float getParam (int band, const juce::String& suffix) const;
     void setParam (int band, const juce::String& suffix, float value);
+    void setDeltaBand (int band);
+    bool isDeltaEnabled() const;
+    int getDeltaBand() const;
     juce::Point<float> bandToPoint (int band) const;
     float pointToFrequency (float x) const;
     float pointToGain (float y) const;

@@ -39,14 +39,19 @@ private:
     using MonoChain = juce::dsp::ProcessorChain<Filter, Filter, Filter, Filter, Filter>;
 
     MonoChain leftChain, rightChain;
+    Filter deltaLeft, deltaRight;
     double currentSampleRate = 44100.0;
     std::atomic<float>* bypassParam = nullptr;
     std::atomic<float>* outputParam = nullptr;
+    std::atomic<float>* deltaParam = nullptr;
+    std::atomic<float>* deltaBandParam = nullptr;
     std::array<std::atomic<float>*, 15> bandParams{};
 
     void updateFilters();
+    void updateDeltaFilter();
     void updateBand (int bandIndex, float freq, float gainDb, float q);
     juce::dsp::IIR::Coefficients<float>::Ptr makeCoefficients (int bandIndex, float freq, float gainDb, float q) const;
+    juce::dsp::IIR::Coefficients<float>::Ptr makeDeltaCoefficients (int bandIndex) const;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ClearEQAudioProcessor)
 };
