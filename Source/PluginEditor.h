@@ -1,6 +1,6 @@
 #pragma once
 
-#include <JuceHeader.h>
+#include "JuceHeader.h"
 #include "PluginProcessor.h"
 
 class ClearEQAudioProcessorEditor final : public juce::AudioProcessorEditor,
