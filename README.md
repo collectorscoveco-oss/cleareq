@@ -12,6 +12,7 @@ ClearEQ is a real JUCE-based EQ plugin project based on the dark VST UI mockup f
 - Large draggable EQ nodes on the frequency graph.
 - Host-automatable parameters for frequency, gain, Q, bypass, and output.
 - GitHub Actions builds downloadable test packages for Windows, macOS, and Linux.
+- Windows installer builds are included for easier DAW testing across Reaper, FL Studio, Ableton, Studio One, etc.
 
 ## Bands
 
